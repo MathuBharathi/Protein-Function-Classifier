@@ -1,0 +1,457 @@
+============================================================
+GOOGLE COLAB - ALL CODE FOR PROTEIN FUNCTION CLASSIFIER
+============================================================
+
+Run each section in a separate Colab cell.
+
+============================================================
+CELL 1: INSTALL DEPENDENCIES
+============================================================
+
+!pip install biopython scikit-learn pandas numpy matplotlib joblib requests
+
+============================================================
+CELL 2: FEATURES.PY - Feature Extraction Module
+============================================================
+
+import numpy as np
+from typing import Dict, List, Optional
+
+# Standard amino acids
+AMINO_ACIDS = list("ACDEFGHIKLMNPQRSTVWY")
+
+# Molecular weights of amino acids (Daltons)
+AA_MOLECULAR_WEIGHTS = {
+    'A': 89.09, 'C': 121.15, 'D': 133.10, 'E': 147.13, 'F': 165.19,
+    'G': 75.07, 'H': 155.16, 'I': 131.17, 'K': 146.19, 'L': 131.17,
+    'M': 149.21, 'N': 132.12, 'P': 115.13, 'Q': 146.15, 'R': 174.20,
+    'S': 105.09, 'T': 119.12, 'V': 117.15, 'W': 204.23, 'Y': 181.19
+}
+
+# Kyte-Doolittle hydrophobicity scale (for GRAVY score)
+HYDROPATHY = {
+    'A': 1.8, 'C': 2.5, 'D': -3.5, 'E': -3.5, 'F': 2.8,
+    'G': -0.4, 'H': -3.2, 'I': 4.5, 'K': -3.9, 'L': 3.8,
+    'M': 1.9, 'N': -3.5, 'P': -1.6, 'Q': -3.5, 'R': -4.5,
+    'S': -0.8, 'T': -0.7, 'V': 4.2, 'W': -0.9, 'Y': -1.3
+}
+
+# pK values for isoelectric point calculation
+PK_VALUES = {
+    'N_term': 9.69, 'C_term': 2.34,
+    'D': 3.86, 'E': 4.25, 'C': 8.33, 'Y': 10.07,
+    'H': 6.00, 'K': 10.54, 'R': 12.48
+}
+
+
+def clean_sequence(sequence: str) -> str:
+    sequence = sequence.upper().strip()
+    sequence = ''.join(sequence.split())
+    valid_sequence = ''.join([aa for aa in sequence if aa in AMINO_ACIDS])
+    return valid_sequence
+
+
+def amino_acid_composition(sequence: str) -> Dict[str, float]:
+    length = len(sequence)
+    if length == 0:
+        return {aa: 0.0 for aa in AMINO_ACIDS}
+    composition = {}
+    for aa in AMINO_ACIDS:
+        count = sequence.count(aa)
+        composition[aa] = count / length  # NORMALIZED
+    return composition
+
+
+def molecular_weight(sequence: str) -> float:
+    if len(sequence) == 0:
+        return 0.0
+    water_weight = 18.015
+    mw = sum(AA_MOLECULAR_WEIGHTS.get(aa, 0) for aa in sequence)
+    mw -= (len(sequence) - 1) * water_weight
+    return mw
+
+
+def _charge_at_pH(sequence: str, pH: float) -> float:
+    positive = 0.0
+    negative = 0.0
+    positive += 1.0 / (1.0 + 10**(pH - PK_VALUES['N_term']))
+    negative += 1.0 / (1.0 + 10**(PK_VALUES['C_term'] - pH))
+    for aa in sequence:
+        if aa in ['K', 'R', 'H']:
+            positive += 1.0 / (1.0 + 10**(pH - PK_VALUES[aa]))
+        elif aa in ['D', 'E']:
+            negative += 1.0 / (1.0 + 10**(PK_VALUES[aa] - pH))
+        elif aa == 'C':
+            negative += 1.0 / (1.0 + 10**(PK_VALUES[aa] - pH))
+        elif aa == 'Y':
+            negative += 1.0 / (1.0 + 10**(PK_VALUES[aa] - pH))
+    return positive - negative
+
+
+def isoelectric_point(sequence: str) -> float:
+    if len(sequence) == 0:
+        return 7.0
+    pH_min, pH_max = 0.0, 14.0
+    for _ in range(100):
+        pH_mid = (pH_min + pH_max) / 2.0
+        charge = _charge_at_pH(sequence, pH_mid)
+        if abs(charge) < 0.001:
+            return pH_mid
+        if charge > 0:
+            pH_min = pH_mid
+        else:
+            pH_max = pH_mid
+    return (pH_min + pH_max) / 2.0
+
+
+def gravy_score(sequence: str) -> float:
+    if len(sequence) == 0:
+        return 0.0
+    total = sum(HYDROPATHY.get(aa, 0) for aa in sequence)
+    return total / len(sequence)
+
+
+def extract_features(sequence: str) -> Optional[np.ndarray]:
+    seq = clean_sequence(sequence)
+    if len(seq) < 50:
+        return None
+    features = []
+    # 1. Amino acid composition (20 features)
+    aa_comp = amino_acid_composition(seq)
+    for aa in AMINO_ACIDS:
+        features.append(aa_comp[aa])
+    # 2. Sequence length
+    features.append(len(seq))
+    # 3. Molecular weight
+    features.append(molecular_weight(seq))
+    # 4. Isoelectric point
+    features.append(isoelectric_point(seq))
+    # 5. GRAVY score
+    features.append(gravy_score(seq))
+    return np.array(features)
+
+
+def get_feature_names() -> List[str]:
+    names = [f"AA_{aa}" for aa in AMINO_ACIDS]
+    names.extend(["seq_length", "mol_weight", "isoelectric_point", "gravy_score"])
+    return names
+
+
+print("✅ Features module loaded!")
+
+============================================================
+CELL 3: DATA FETCHER - Download proteins from UniProt
+============================================================
+
+import requests
+import pandas as pd
+import time
+import os
+
+UNIPROT_API = "https://rest.uniprot.org/uniprotkb/search"
+
+CLASS_KEYWORDS = {
+    "Enzyme": ["kinase", "synthase", "dehydrogenase", "protease", "oxidase", "reductase", "transferase", "hydrolase"],
+    "Binding": ["binding", "receptor", "antibody", "ligand-binding"],
+    "Transporter": ["transporter", "channel", "pump", "carrier", "symporter", "antiporter"],
+    "Regulatory": ["transcription", "regulator", "repressor", "activator", "transcription factor"]
+}
+
+TARGET_PER_CLASS = 300
+
+
+def fetch_proteins_for_class(class_name: str, keywords: list, max_results: int = 300) -> list:
+    proteins = []
+    for keyword in keywords:
+        if len(proteins) >= max_results:
+            break
+        query = f'(keyword:"{keyword}") AND (reviewed:true) AND (length:[100 TO 1000])'
+        params = {
+            "query": query,
+            "format": "json",
+            "fields": "accession,sequence,keyword,protein_name,cc_function",
+            "size": min(100, max_results - len(proteins))
+        }
+        try:
+            print(f"  Fetching '{keyword}' for {class_name}...")
+            response = requests.get(UNIPROT_API, params=params, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+            results = data.get("results", [])
+            
+            for entry in results:
+                function_text = ""
+                if "comments" in entry:
+                    for comment in entry.get("comments", []):
+                        if comment.get("commentType") == "FUNCTION":
+                            texts = comment.get("texts", [])
+                            if texts:
+                                function_text = texts[0].get("value", "")
+                
+                protein_name = entry.get("proteinDescription", {}).get("recommendedName", {}).get("fullName", {}).get("value", "")
+                skip_terms = ["hypothetical", "uncharacterized", "putative", "probable", "unknown function"]
+                if any(term.lower() in (function_text + protein_name).lower() for term in skip_terms):
+                    continue
+                
+                keywords_list = [kw.get("name", "") for kw in entry.get("keywords", [])]
+                protein = {
+                    "accession": entry.get("primaryAccession", ""),
+                    "sequence": entry.get("sequence", {}).get("value", ""),
+                    "keywords": "; ".join(keywords_list),
+                    "function": function_text,
+                    "protein_name": protein_name,
+                    "label": class_name
+                }
+                if protein["sequence"] and len(protein["sequence"]) >= 50:
+                    proteins.append(protein)
+            time.sleep(0.5)
+        except requests.RequestException as e:
+            print(f"  Warning: Failed to fetch '{keyword}': {e}")
+            continue
+    print(f"  → Fetched {len(proteins)} proteins for {class_name}")
+    return proteins[:max_results]
+
+
+def fetch_all_proteins() -> pd.DataFrame:
+    all_proteins = []
+    print("=" * 50)
+    print("UniProt Data Fetcher")
+    print("=" * 50)
+    
+    for class_name, keywords in CLASS_KEYWORDS.items():
+        print(f"\n[{class_name}]")
+        proteins = fetch_proteins_for_class(class_name, keywords, TARGET_PER_CLASS)
+        all_proteins.extend(proteins)
+    
+    df = pd.DataFrame(all_proteins)
+    df = df.drop_duplicates(subset=["accession"])
+    
+    print("\n" + "=" * 50)
+    print("Class Distribution:")
+    print(df["label"].value_counts())
+    print(f"\nTotal proteins: {len(df)}")
+    
+    return df
+
+
+# Run data fetching
+print("Downloading protein data from UniProt...")
+protein_df = fetch_all_proteins()
+print("\n✅ Data download complete!")
+
+============================================================
+CELL 4: TRAIN THE MODEL
+============================================================
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
+from sklearn.dummy import DummyClassifier
+import joblib
+
+np.random.seed(42)
+RANDOM_STATE = 42
+
+print("Extracting features...")
+X_list = []
+y_list = []
+
+for idx, row in protein_df.iterrows():
+    features = extract_features(row["sequence"])
+    if features is not None:
+        X_list.append(features)
+        y_list.append(row["label"])
+    if (idx + 1) % 200 == 0:
+        print(f"  Processed {idx + 1}/{len(protein_df)} sequences...")
+
+X = np.vstack(X_list)
+y = np.array(y_list)
+print(f"Valid samples: {len(X)}")
+
+# Plot class distribution
+plt.figure(figsize=(8, 5))
+unique, counts = np.unique(y, return_counts=True)
+plt.bar(unique, counts, color=['#2ecc71', '#3498db', '#e74c3c', '#9b59b6'])
+plt.xlabel('Functional Class')
+plt.ylabel('Count')
+plt.title('Class Distribution')
+plt.show()
+
+# Train/Test Split (STRATIFIED)
+print("\nSplitting data (80/20 stratified)...")
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=RANDOM_STATE, stratify=y
+)
+print(f"Training samples: {len(X_train)}")
+print(f"Test samples: {len(X_test)}")
+
+# Train Random Forest
+print("\nTraining Random Forest...")
+model = RandomForestClassifier(n_estimators=100, random_state=RANDOM_STATE, n_jobs=-1)
+model.fit(X_train, y_train)
+
+# Evaluate
+y_pred = model.predict(X_test)
+accuracy = accuracy_score(y_test, y_pred)
+
+print(f"\n{'='*50}")
+print("RESULTS")
+print(f"{'='*50}")
+print(f"\n🎯 Accuracy: {accuracy:.2%}")
+print(f"\nClassification Report:")
+print(classification_report(y_test, y_pred))
+
+# Random baseline
+dummy = DummyClassifier(strategy='stratified', random_state=RANDOM_STATE)
+dummy.fit(X_train, y_train)
+dummy_accuracy = accuracy_score(y_test, dummy.predict(X_test))
+print(f"\n📊 Random baseline: {dummy_accuracy:.2%}")
+print(f"📈 Improvement: {(accuracy - dummy_accuracy):.2%}")
+
+# Confusion Matrix
+cm = confusion_matrix(y_test, y_pred)
+plt.figure(figsize=(8, 6))
+plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
+plt.title('Confusion Matrix')
+plt.colorbar()
+classes = model.classes_
+tick_marks = np.arange(len(classes))
+plt.xticks(tick_marks, classes, rotation=45, ha='right')
+plt.yticks(tick_marks, classes)
+for i in range(cm.shape[0]):
+    for j in range(cm.shape[1]):
+        plt.text(j, i, format(cm[i, j], 'd'), ha="center", va="center",
+                 color="white" if cm[i, j] > cm.max()/2 else "black")
+plt.ylabel('True Label')
+plt.xlabel('Predicted Label')
+plt.tight_layout()
+plt.show()
+
+# Feature Importance
+feature_names = get_feature_names()
+importances = model.feature_importances_
+indices = np.argsort(importances)[::-1][:15]
+plt.figure(figsize=(10, 6))
+plt.barh(range(15), importances[indices][::-1], color='#3498db')
+plt.yticks(range(15), [feature_names[i] for i in indices][::-1])
+plt.xlabel('Feature Importance')
+plt.title('Top 15 Most Important Features')
+plt.tight_layout()
+plt.show()
+
+# Save model
+MODEL_DATA = {
+    'model': model,
+    'classes': classes,
+    'feature_names': feature_names,
+    'accuracy': accuracy
+}
+print("\n✅ Model training complete!")
+
+============================================================
+CELL 5: PREDICTION FUNCTION
+============================================================
+
+def predict_function(sequence: str) -> dict:
+    """
+    Predict protein functional class from sequence.
+    """
+    # Clean and validate
+    seq = clean_sequence(sequence)
+    
+    if len(seq) < 50:
+        return {
+            "predicted_class": None,
+            "confidence": {},
+            "error": f"Sequence too short ({len(seq)} AA). Minimum 50 required."
+        }
+    
+    # Extract features
+    features = extract_features(seq)
+    if features is None:
+        return {"predicted_class": None, "confidence": {}, "error": "Feature extraction failed"}
+    
+    # Predict
+    X = features.reshape(1, -1)
+    predicted_class = model.predict(X)[0]
+    probabilities = model.predict_proba(X)[0]
+    
+    # Build confidence dictionary
+    confidence = {cls: round(float(prob), 4) for cls, prob in zip(model.classes_, probabilities)}
+    confidence = dict(sorted(confidence.items(), key=lambda x: x[1], reverse=True))
+    
+    return {
+        "predicted_class": predicted_class,
+        "confidence": confidence,
+        "sequence_length": len(seq),
+        "error": None
+    }
+
+
+def format_result(result: dict) -> str:
+    if result.get("error"):
+        return f"❌ Prediction Failed: {result['error']}"
+    
+    output = []
+    output.append("=" * 50)
+    output.append("🧬 PROTEIN FUNCTION PREDICTION")
+    output.append("=" * 50)
+    output.append(f"\nSequence Length: {result['sequence_length']} amino acids")
+    output.append(f"\n✅ Predicted Class: {result['predicted_class']}")
+    output.append("\nConfidence Scores:")
+    output.append("-" * 30)
+    
+    for cls, prob in result["confidence"].items():
+        bar = "█" * int(prob * 20)
+        output.append(f"  {cls:12s}: {prob:.2%} {bar}")
+    
+    output.append("=" * 50)
+    return "\n".join(output)
+
+
+print("✅ Prediction function ready!")
+
+============================================================
+CELL 6: TEST PREDICTIONS
+============================================================
+
+# Test 1: Human Insulin
+insulin_seq = "MALWMRLLPLLALLALWGPDPAAAFVNQHLCGSHLVEALYLVCGERGFFYTPKTRREAEDLQVGQVELGGGPGAGSLQPLALEGSLQKRGIVEQCCTSICSLYQLENYCN"
+print("Testing with Human Insulin:")
+result = predict_function(insulin_seq)
+print(format_result(result))
+
+print("\n" + "="*60 + "\n")
+
+# Test 2: Hemoglobin
+hemoglobin_seq = "MVLSPADKTNVKAAWGKVGAHAGEYGAEALERMFLSFPTTKTYFPHFDLSHGSAQVKGHGKKVADALTNAVAHVDDMPNALSALSDLHAHKLRVDPVNFKLLSHCLLVTLAAHLPAEFTPAVHASLDKFLASVSTVLTSKYR"
+print("Testing with Hemoglobin:")
+result = predict_function(hemoglobin_seq)
+print(format_result(result))
+
+print("\n" + "="*60 + "\n")
+
+# Test 3: Edge case - too short
+print("Testing edge case (short sequence):")
+result = predict_function("ABC")
+print(format_result(result))
+
+============================================================
+CELL 7: TRY YOUR OWN SEQUENCE
+============================================================
+
+# Paste your protein sequence here:
+your_sequence = """
+PASTE_YOUR_SEQUENCE_HERE
+"""
+
+# Uncomment below to run:
+# result = predict_function(your_sequence)
+# print(format_result(result))
+
+============================================================
+END OF ALL CODE
+============================================================
