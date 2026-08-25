@@ -6,231 +6,200 @@ PROTEIN FUNCTION CLASSIFIER - PRESENTATION CONTENT
 SLIDE 1: TITLE SLIDE
 -------------------------------------------------------
 Title: AI-Assisted Protein Function Classifier
-Subtitle: Predicting Protein Functional Classes Using Machine Learning
-Team: [Your Team Name]
-Event: XENVIRON Hackathon 2026
+Subtitle: Predicting Broad Protein Functional Classes Using Machine Learning
+Target Audience: Biomedical Engineering / Computational Biology Evaluation
+Purpose: Broad computational protein function classification from primary amino-acid sequences
 
 -------------------------------------------------------
-SLIDE 2: INTRODUCTION
+SLIDE 2: INTRODUCTION & BIOMEDICAL MOTIVATION
 -------------------------------------------------------
-• Proteins are the molecular machines of life
-• Each protein has a specific function determined by its sequence
-• Over 200 million protein sequences exist in databases
-• Less than 1% have experimentally verified functions
-• Manual annotation is slow, expensive, and cannot scale
-• Need: Fast computational methods for initial screening
-
-Key Stat: UniProt adds ~40,000 new sequences monthly, but experimental validation takes years
+• Protein sequences in public databases (e.g., UniProt) continue to grow rapidly due to high-throughput sequencing.
+• Experimental characterization of protein function in the laboratory is labor-intensive and time-consuming.
+• A vast number of uncharacterized protein sequences require computational annotation.
+• Computational Classification Role: Serves as a rapid, preliminary first-pass screening step to prioritize candidate proteins for detailed biological investigation.
+• Key Premise: Sequence-derived physicochemical properties and amino-acid composition harbor predictive signals for broad functional roles.
 
 -------------------------------------------------------
 SLIDE 3: PROBLEM STATEMENT
 -------------------------------------------------------
 Problem:
-"The gap between sequenced proteins and functionally annotated proteins 
-continues to grow exponentially, creating a critical bottleneck in 
-biological research and drug discovery."
+"The growing disparity between available raw protein sequences and experimentally verified functional annotations creates a major bottleneck in biological research."
 
-Challenges:
-1. Experimental characterization costs $10,000-$50,000 per protein
-2. Lab validation takes 6-24 months per protein
-3. 99% of protein sequences lack verified function
-4. Researchers waste time on redundant experiments
+Key Challenges:
+1. High volume of sequence data outpaces experimental annotation bandwidth.
+2. Manual laboratory validation cannot scale to process whole-proteome sequence collections.
+3. Computational prioritization tools are needed to categorize uncharacterized sequences into broad functional groups.
 
-Our Solution:
-Machine learning-based prediction tool that provides rapid first-pass 
-functional classification to prioritize experimental work
+Solution Overview:
+A machine-learning pipeline that maps primary amino-acid sequences to numerical physicochemical feature vectors to classify proteins into broad functional classes.
 
 -------------------------------------------------------
-SLIDE 4: OBJECTIVES
+SLIDE 4: OBJECTIVES & FUNCTIONAL CLASSES
 -------------------------------------------------------
 Primary Objective:
-Develop an AI-assisted tool to predict protein functional class from 
-amino acid sequence
+"Develop a machine-learning system that predicts broad protein functional classes from primary amino-acid sequences using sequence-derived features."
 
 Specific Objectives:
-1. Extract meaningful numerical features from protein sequences
-2. Train a classification model on curated UniProt data
-3. Achieve ≥60% accuracy (significantly above random baseline of 25%)
-4. Build a usable prediction tool with confidence scores
+1. Collect curated/reviewed protein sequences from UniProt REST API.
+2. Build a balanced four-class protein dataset.
+3. Extract 33 sequence-derived and physicochemical features.
+4. Train and evaluate multiple machine-learning classifiers.
+5. Develop and evaluate a Random Forest as the primary classifier.
+6. Assess performance using cross-validation and an independent held-out test set.
+7. Analyze model behavior using confusion matrices, ROC-AUC, and feature importance.
+8. Demonstrate prediction on unseen protein sequences.
 
-Functional Classes:
-┌──────────────┬─────────────────────────────────────┐
-│ Class        │ Examples                            │
-├──────────────┼─────────────────────────────────────┤
-│ Enzyme       │ Kinase, Protease, Oxidase           │
-│ Binding      │ Receptor, Antibody, DNA-binding     │
-│ Transporter  │ Channel, Pump, Carrier              │
-│ Regulatory   │ Transcription factor, Repressor     │
-└──────────────┴─────────────────────────────────────┘
+Four Broad Functional Classes:
+┌──────────────┬────────────────────────────────────────────────────────┐
+│ Class        │ Functional Description & Examples                      │
+├──────────────┼────────────────────────────────────────────────────────┤
+│ Enzyme       │ Catalyze biochemical reactions (e.g., Kinases, Proteases)│
+│ Binding      │ Non-catalytic binding interactions (e.g., Receptors)   │
+│ Regulatory   │ Control cellular processes (e.g., Transcription factors)│
+│ Transporter  │ Facilitate molecular transport across membranes        │
+└──────────────┴────────────────────────────────────────────────────────┘
 
 -------------------------------------------------------
-SLIDE 5: METHODOLOGY / TECHNICAL APPROACH
+SLIDE 5: METHODOLOGY / TECHNICAL PIPELINE
 -------------------------------------------------------
+Technical Pipeline Flow:
 
-[FLOWCHART - describe for your diagram:]
-
-┌─────────────────┐
-│   UniProt       │
-│ Swiss-Prot DB   │
-│ (790 proteins)  │
-└───────┬─────────┘
+UniProt REST API (Reviewed / Swiss-Prot Data)
+        │
         ▼
-┌─────────────────┐
-│ Data Cleaning   │
-│ • Filter reviewed│
-│ • Remove unknown│
-│ • Label by      │
-│   keywords      │
-└───────┬─────────┘
+Data Quality Filtering & Ambiguity Removal
+        │
         ▼
-┌─────────────────┐
-│ Feature         │
-│ Extraction      │
-│ (24 features)   │
-│ • AA composition│
-│ • Mol weight    │
-│ • GRAVY score   │
-│ • pI value      │
-└───────┬─────────┘
+Duplicate Sequence Removal (Final: 1,119 Proteins)
+        │
         ▼
-┌─────────────────┐
-│ Random Forest   │
-│ Classifier      │
-│ (100 trees)     │
-│ 80/20 split     │
-└───────┬─────────┘
+Extract 33 Sequence-Derived Features
+        │
         ▼
-┌─────────────────┐
-│ Prediction Tool │
-│ • Class output  │
-│ • Confidence %  │
-└─────────────────┘
-
-Features Used (24 Total):
-• Amino Acid Composition: 20 features (frequency of each amino acid)
-• Sequence Length: 1 feature
-• Molecular Weight: 1 feature
-• Isoelectric Point (pI): 1 feature
-• GRAVY Score (hydrophobicity): 1 feature
-
-Why Random Forest?
-• Works well with small datasets
-• Handles non-linear patterns
-• Provides feature importance
-• No hyperparameter drama
-• Fast training
+80/20 Stratified Train-Test Split (Train: 895 | Test: 224)
+        │
+        ▼
+5-Fold Stratified Cross-Validation
+        │
+        ▼
+Model Comparison (Baseline, Logistic Regression, SVM, Random Forest)
+        │
+        ▼
+Primary Model: Random Forest Classifier (300 Trees, Balanced Class Weights)
+        │
+        ▼
+Independent Held-Out Test Evaluation & Feature Importance Analysis
 
 -------------------------------------------------------
-SLIDE 6: PROTOTYPE / OUTCOME / RESULTS
+SLIDE 6: DATASET & FEATURE ENGINEERING
 -------------------------------------------------------
+Dataset Summary (Curated UniProt Records):
+• Total Final Samples: 1,119 proteins (Balanced dataset)
+  - Enzyme:       280
+  - Binding:      280
+  - Regulatory:   280
+  - Transporter:  279
 
-MODEL PERFORMANCE:
-┌────────────────────┬──────────────┐
-│ Metric             │ Value        │
-├────────────────────┼──────────────┤
-│ Model Accuracy     │ 72.78%       │
-│ Random Baseline    │ 29.75%       │
-│ Improvement        │ +43.04%      │
-└────────────────────┴──────────────┘
+Data Quality Filtering Metrics:
+• Initial Records Fetched: 1,120
+• Removed Duplicate Accessions: 0
+• Removed Duplicate Sequences: 1
+• Removed Unclear/Ambiguous Annotations: 60
+• Final Dataset Samples: 1,119 (1,120 accessions, 1,119 unique sequences)
 
-Per-Class Performance:
-• Binding: 89% recall (best performing)
-• Enzyme: 72% recall
-• Regulatory: 70% recall
-• Transporter: 53% recall (limited data)
-
-Top Predictive Features:
-1. GRAVY Score (hydrophobicity)
-2. Cysteine content (AA_C)
-3. Leucine content (AA_L)
-4. Isoleucine content (AA_I)
-
-DEMO OUTPUT:
-Input: Human Insulin sequence (110 amino acids)
-Output:
-  ✅ Predicted Class: Binding
-  Confidence:
-    Binding:     46%
-    Enzyme:      26%
-    Transporter: 15%
-    Regulatory:  13%
+Feature Engineering (33 Sequence-Derived Features):
+• Amino-Acid Composition (20 features): Relative frequencies of AA_A through AA_Y.
+• Physicochemical & Sequence Features (13 features):
+  - Sequence Length, Molecular Weight, Isoelectric Point (pI)
+  - GRAVY Score (Grand Average of Hydropathy)
+  - Compositional Fractions: Aromatic, Charged, Acidic, Basic, Hydrophobic, Polar, Cysteine, Proline
+  - Hydrophobic Segment Information
+• Purpose: Transforms raw amino-acid sequences into numerical representations for ML models.
 
 -------------------------------------------------------
-SLIDE 7: BENEFITS / IMPACT
+SLIDE 7: MODEL TRAINING & EVALUATION RESULTS
 -------------------------------------------------------
+Model Comparison (Independent Held-Out Test Set, N=224):
+┌───────────────────────────┬──────────┬──────────────┬──────────┬─────────────┐
+│ Model                     │ Accuracy │ Balanced Acc │ Macro F1 │ Weighted F1 │
+├───────────────────────────┼──────────┼──────────────┼──────────┼─────────────┤
+│ Stratified Dummy Baseline │ 25.00%   │ 25.00%       │ 0.2487   │ 0.2487      │
+│ Logistic Regression       │ 74.55%   │ 74.55%       │ 0.7457   │ 0.7457      │
+│ SVM (RBF Kernel)          │ 79.91%   │ 79.91%       │ 0.7975   │ 0.7975      │
+│ Random Forest (Primary)   │ 80.80%   │ 80.80%       │ 0.8071   │ 0.8071      │
+└───────────────────────────┴──────────┴──────────────┴──────────┴─────────────┘
 
-For Researchers:
-• Rapid first-pass screening of unknown proteins
-• Prioritize experimental validation efforts
-• Save months of preliminary work
-• Focus lab resources on high-confidence candidates
+Primary Model Configuration (Random Forest):
+• Parameters: 300 trees/estimators, class_weight="balanced", random_state=42, n_jobs=-1
+• 5-Fold Stratified Cross-Validation: Accuracy = 80.67% ± 3.13% | Macro F1 = 0.8066 ± 0.0314
+• Final Held-Out Test Accuracy: 80.80% (Macro F1: 0.8071 | Weighted F1: 0.8071)
+• Performance Improvement: 55.80 percentage-point improvement over the stratified dummy baseline.
+• Multiclass One-vs-Rest ROC-AUC: 0.9531 (Macro & Weighted)
+  (Measures the model's ability to distinguish and rank different functional classes based on predicted probabilities)
 
-For Drug Discovery:
-• Quick identification of potential drug targets
-• Filter large protein datasets efficiently
-• Accelerate early-stage research
-
-For Bioinformatics:
-• Automated annotation pipeline component
-• Reduces manual curation workload
-• Scalable to millions of sequences
-
-Cost-Benefit:
-┌──────────────────┬────────────────┬───────────────┐
-│ Approach         │ Time           │ Cost          │
-├──────────────────┼────────────────┼───────────────┤
-│ Lab Experiment   │ 6-24 months    │ $10,000+      │
-│ Our Tool         │ <1 second      │ Free          │
-└──────────────────┴────────────────┴───────────────┘
-
--------------------------------------------------------
-SLIDE 8: LIMITATIONS & FUTURE WORK
--------------------------------------------------------
-
-Current Limitations:
-• Broad functional classes only (not fine-grained GO terms)
-• Sequence-based features (no 3D structure info)
-• Limited to 4 classes
-• Not a replacement for wet lab validation
-
-Future Improvements:
-• Add more functional classes
-• Integrate structural features (when available)
-• Ensemble with deep learning models
-• API deployment for web access
+Class-Wise Performance (Held-Out Test Set):
+┌──────────────┬───────────┬────────┬────────┬─────────┐
+│ Class        │ Precision │ Recall │ F1     │ Support │
+├──────────────┼───────────┼────────┼────────┼─────────┤
+│ Transporter  │ 0.8448    │ 0.8750 │ 0.8596 │ 56      │ (Best-performing class by F1)
+│ Binding      │ 0.8627    │ 0.7857 │ 0.8224 │ 56      │ (Strong precision)
+│ Regulatory   │ 0.7143    │ 0.8929 │ 0.7937 │ 56      │ (High recall)
+│ Enzyme       │ 0.8444    │ 0.6786 │ 0.7525 │ 56      │ (Weakest class - recall 67.86%)
+└──────────────┴───────────┴────────┴────────┴─────────┘
 
 -------------------------------------------------------
-SLIDE 9: CONCLUSION
+SLIDE 8: INTERPRETABILITY & PREDICTION DEMONSTRATIONS
 -------------------------------------------------------
+Feature Importance Analysis:
+• Top Impurity Features: GRAVY score (0.0851), Aromatic fraction (0.0622), Charged fraction (0.0601), Acidic fraction (0.0539), AA_F (0.0453).
+• Top Permutation Features: GRAVY score (0.0379 ± 0.0092), AA_I (0.0165 ± 0.0066), Aromatic fraction (0.0152 ± 0.0166), Acidic fraction (0.0143 ± 0.0095).
+• Scientific Interpretation: GRAVY score was the most useful feature for the Random Forest's decision-making in this dataset. Feature importance reflects model utility/predictive contribution and does not establish biological causation.
 
-What We Built:
-✓ Complete ML pipeline for protein classification
-✓ 72.78% accuracy (43% above random baseline)
-✓ Usable prediction tool with confidence scores
-✓ Jupyter notebook demo for live predictions
+Prediction Demonstrations & Model Limitations:
+1. Human Insulin (110 aa):
+   - Predicted Class: Binding
+   - Confidence Scores: Binding 37%, Enzyme 27%, Regulatory 24%, Transporter 12%
+   - Interpretation: Model confidence represents a statistical probability estimate, NOT biological certainty.
+2. Hemoglobin (142 aa):
+   - Predicted Class: Enzyme (Enzyme 43%, Transporter 22%, Regulatory 19%, Binding 16%)
+   - Limitation Insight: The model predicted Enzyme based on the sequence-derived feature representation, demonstrating that sequence-composition features alone can misclassify biologically distinct proteins.
+3. Aquaporin:
+   - Serves as a representative membrane water-channel protein test case for evaluating the Transporter class.
+4. Edge Case Handling & Input Validation:
+   - Prediction pipeline validates input sequences and rejects short/invalid amino-acid inputs to prevent misleading predictions.
+
+-------------------------------------------------------
+SLIDE 9: LIMITATIONS & FUTURE WORK
+-------------------------------------------------------
+Model Limitations:
+1. Evaluates four broad functional classes; does not provide fine-grained GO term annotations.
+2. Relies solely on sequence-derived features without explicit 3D structural or active-site spatial information.
+3. Biological functional overlap exists in nature (e.g., dual regulatory/binding proteins).
+4. Enzyme classification exhibits lower recall (67.86%), revealing confusion with other functional classes.
+5. Performance may vary on external datasets with differing class distributions.
+6. Model probabilities represent statistical estimates, not biological certainty.
+7. System is a computational research tool, NOT intended for clinical diagnosis, and requires experimental validation.
+
+Future Research Directions:
+• Expand classification granularity to fine-grained functional subcategories and additional protein families.
+• Incorporate 3D structural descriptors (e.g., AlphaFold structure embeddings) and evolutionary conservation scores.
+• Explore biological language model representations (e.g., ESM-2 / ProtBERT) and deep learning architectures.
+• Improve classification performance on challenging classes such as Enzymes through specialized motif features.
+
+-------------------------------------------------------
+SLIDE 10: CONCLUSION & SUMMARY
+-------------------------------------------------------
+Summary of Key Accomplishments:
+✓ Built an end-to-end machine learning pipeline for broad protein functional classification.
+✓ Curated a balanced dataset of 1,119 protein sequences across 4 classes with 33 sequence-derived features.
+✓ Trained Random Forest classifier (300 estimators) outperforming baseline, Logistic Regression, and SVM:
+  - 5-Fold Cross-Validation: 80.67% ± 3.13%
+  - Final Held-Out Test Accuracy: 80.80% (55.80 percentage-point improvement over stratified dummy baseline)
+  - Macro F1: 0.8071 | Multiclass One-vs-Rest ROC-AUC: 0.9531
+✓ Identified hydrophobicity (GRAVY score) as the top feature driving classification decision-making.
 
 Key Takeaway:
-"Simple, interpretable machine learning can provide meaningful 
-biological insights and accelerate research."
-
--------------------------------------------------------
-SLIDE 10: THANK YOU / Q&A
--------------------------------------------------------
+"Sequence-derived physicochemical and composition features provide strong predictive signals for broad protein functional classification, serving as an effective computational first-pass screening tool."
 
 Thank You!
-
-Try It Yourself:
-python predict.py "YOUR_PROTEIN_SEQUENCE"
-
-Tech Stack:
-• Python 3.13
-• scikit-learn (Random Forest)
-• BioPython
-• pandas, numpy, matplotlib
-
-GitHub: [Your Repo Link]
-Contact: [Your Contact Info]
-
-=======================================================
-END OF PRESENTATION CONTENT
-=======================================================
+Questions & Discussion
