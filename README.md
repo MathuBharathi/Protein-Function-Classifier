@@ -1,4 +1,11 @@
 <p align="center">
+  <img 
+    src="banner.png" 
+    alt="AI-Assisted Protein Function Classifier" 
+    width="100%"
+  >
+</p>
+<p align="center">
   <h1 align="center">🧬 AI-Assisted Protein Function Classifier</h1>
 </p>
 
