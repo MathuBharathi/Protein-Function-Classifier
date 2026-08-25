@@ -1,34 +1,17 @@
+# Jupyter
+.ipynb_checkpoints/
+
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-*.egg-info/
-dist/
-build/
-*.egg
 
 # Virtual environment
 .venv/
 venv/
-ENV/
 
-# Jupyter
-.ipynb_checkpoints/
+# Environment / secrets
+.env
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-Thumbs.db
+# OS files
 .DS_Store
-
-# Model files (large binary)
-models/classifier.joblib
-
-# Data files (can be regenerated)
-data/proteins_full.csv
-data/proteins.csv
+Thumbs.db
